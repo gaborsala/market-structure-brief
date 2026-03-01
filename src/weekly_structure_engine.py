@@ -26,10 +26,6 @@ class Config:
 
 
 def load_ratios_wide(path: Path) -> pd.DataFrame:
-    """
-    Expects: Date column + sector columns containing ratios.
-    Returns: Date index, float columns.
-    """
     df = pd.read_csv(path)
     if "Date" not in df.columns:
         raise ValueError(f"Missing 'Date' column in {path}")
@@ -37,7 +33,6 @@ def load_ratios_wide(path: Path) -> pd.DataFrame:
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.set_index("Date").sort_index()
 
-    # Keep only expected sector columns if present
     cols_present = [c for c in SECTOR_ETFS if c in df.columns]
     if not cols_present:
         raise ValueError(f"No sector columns found in {path}. Expected at least one of: {SECTOR_ETFS}")
@@ -63,19 +58,11 @@ def ratio_return(series: pd.Series) -> float:
 
 
 def direction_label(series: pd.Series, cfg: Config) -> str:
-    """
-    Split into 2 halves (10 + 10 for 20 sessions). Compare max/min of each half.
-    HH/HL if max2>max1 AND min2>min1
-    LH/LL if max2<max1 AND min2<min1
-    TRANSITION if only one condition holds
-    RANGE otherwise
-    """
     s = series.dropna()
     if len(s) < cfg.days:
-        # still attempt by taking last cfg.days from original series (may include NaNs)
         s = series.tail(cfg.days).dropna()
     if len(s) < cfg.days:
-        return "RANGE"  # default conservative label if insufficient data
+        return "RANGE"
 
     s = s.tail(cfg.days)
     h1 = s.iloc[:cfg.half]
@@ -95,15 +82,18 @@ def direction_label(series: pd.Series, cfg: Config) -> str:
     if lower_high and lower_low:
         return "LH/LL"
 
-    # transition means one-side shift but not both
-    if (higher_high and not higher_low) or (higher_low and not higher_high) or (lower_high and not lower_low) or (lower_low and not lower_high):
+    if (
+        (higher_high and not higher_low)
+        or (higher_low and not higher_high)
+        or (lower_high and not lower_low)
+        or (lower_low and not lower_high)
+    ):
         return "TRANSITION"
 
     return "RANGE"
 
 
 def leadership_status(rank: int, direction: str, ret_4w: float, ret_5d: float) -> str:
-    """Structure-aligned leadership mapping (Now Zone 2 friendly)."""
     if direction == "LH/LL":
         return "Weak"
     if rank <= 3 and direction == "HH/HL":
@@ -115,24 +105,25 @@ def leadership_status(rank: int, direction: str, ret_4w: float, ret_5d: float) -
     return "Neutral"
 
 
-
 def classify_breadth(directions: pd.Series) -> str:
-    """Now Zone 2 breadth logic:
-    - Broad Participation: 4+ sectors in HH/HL
-    - Narrow Leadership: 1–2 sectors in HH/HL (we use <=2)
+    """
+    Now Zone 2 breadth logic:
+    - Broad Leadership: 4+ sectors in HH/HL
+    - Narrow Leadership: 1–2 sectors in HH/HL
     - Fragmented: otherwise
     """
     hhhl = int((directions == "HH/HL").sum())
+
     if hhhl >= 4:
-        return "Broad Participation"
+        return "Broad Leadership"
     if hhhl <= 2:
         return "Narrow Leadership"
     return "Fragmented"
 
 
-
 def classify_tilt(directions: pd.Series) -> str:
-    """Now Zone 2 tilt logic:
+    """
+    Now Zone 2 tilt logic:
     - Defensive Tilt: 3+ defensive sectors in HH/HL
     - Cyclical Tilt: 3+ cyclical sectors in HH/HL
     - Balanced: otherwise
@@ -147,9 +138,7 @@ def classify_tilt(directions: pd.Series) -> str:
     return "Balanced"
 
 
-
 def make_markdown_blocks(summary_df: pd.DataFrame, meta: Dict) -> str:
-    # Top/Bottom blocks
     top3 = summary_df.nsmallest(3, "Rank")[["Ticker", "Ret_4W", "Direction", "Leadership"]]
     bot3 = summary_df.nlargest(3, "Rank")[["Ticker", "Ret_4W", "Direction", "Leadership"]]
 
@@ -176,9 +165,9 @@ def make_markdown_blocks(summary_df: pd.DataFrame, meta: Dict) -> str:
     lines.append("")
 
     lines.append("## Full Ranking Table (for template)")
-    # simple markdown table
     lines.append("| Rank | Ticker | 4W Ret | 5D Ret | Direction | Leadership |")
     lines.append("|---:|:---:|---:|---:|:---:|:---|")
+
     for _, r in summary_df.sort_values("Rank").iterrows():
         lines.append(
             f"| {int(r['Rank'])} | {r['Ticker']} | {fmt_pct(r['Ret_4W'])} | {fmt_pct(r['Ret_5D'])} | {r['Direction']} | {r['Leadership']} |"
@@ -190,11 +179,11 @@ def make_markdown_blocks(summary_df: pd.DataFrame, meta: Dict) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--infile", default="out/ratios_wide.csv", help="Input ratios wide CSV (default: out/ratios_wide.csv)")
-    ap.add_argument("--outdir", default="out", help="Output directory (default: out)")
-    ap.add_argument("--days", type=int, default=20, help="Sessions used (default: 20)")
-    ap.add_argument("--half", type=int, default=10, help="Half-window size (default: 10)")
-    ap.add_argument("--epsilon", type=float, default=0.0, help="Noise epsilon for HH/HL comparisons (default: 0.0)")
+    ap.add_argument("--infile", default="out/ratios_wide.csv")
+    ap.add_argument("--outdir", default="out")
+    ap.add_argument("--days", type=int, default=20)
+    ap.add_argument("--half", type=int, default=10)
+    ap.add_argument("--epsilon", type=float, default=0.0)
     args = ap.parse_args()
 
     cfg = Config(days=args.days, half=args.half, epsilon=args.epsilon)
@@ -206,13 +195,13 @@ def main() -> None:
     ratios = load_ratios_wide(infile)
     ratios = tail_sessions(ratios, cfg.days)
 
-    # compute returns + directions
     rows: List[Dict] = []
     for tkr in [c for c in SECTOR_ETFS if c in ratios.columns]:
         s = ratios[tkr]
         ret_4w = ratio_return(s)
         ret_5d = ratio_return(s.tail(5))
         direction = direction_label(s, cfg)
+
         rows.append(
             {
                 "Ticker": tkr,
@@ -224,17 +213,16 @@ def main() -> None:
 
     df = pd.DataFrame(rows)
 
-    # rank by 4W return (descending best = rank 1)
     df = df.sort_values("Ret_4W", ascending=False, na_position="last").reset_index(drop=True)
     df["Rank"] = range(1, len(df) + 1)
 
-    # leadership status
     df["Leadership"] = [
-        leadership_status(int(r["Rank"]), r["Direction"], r["Ret_4W"], r["Ret_5D"]) for _, r in df.iterrows()
+        leadership_status(int(r["Rank"]), r["Direction"], r["Ret_4W"], r["Ret_5D"])
+        for _, r in df.iterrows()
     ]
 
-    # breadth & tilt
     directions = df.set_index("Ticker")["Direction"]
+
     meta = {
         "sessions_used": int(cfg.days),
         "breadth": classify_breadth(directions),
@@ -245,12 +233,10 @@ def main() -> None:
         "count_TRANSITION": int((directions == "TRANSITION").sum()),
     }
 
-    # outputs
     summary_path = outdir / "weekly_structure_summary.csv"
     json_path = outdir / "weekly_classification.json"
     md_path = outdir / "weekly_brief_blocks.md"
 
-    # stable column order
     df = df[["Rank", "Ticker", "Ret_4W", "Ret_5D", "Direction", "Leadership"]].sort_values("Rank")
     df.to_csv(summary_path, index=False, float_format="%.6f")
 
@@ -258,8 +244,8 @@ def main() -> None:
         "meta": meta,
         "table": df.to_dict(orient="records"),
     }
-    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     md_path.write_text(make_markdown_blocks(df, meta), encoding="utf-8")
 
     print("Wrote:")
