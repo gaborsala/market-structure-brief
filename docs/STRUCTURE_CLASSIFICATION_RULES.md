@@ -128,7 +128,7 @@ Breadth is determined by the count of HH/HL sectors.
 Rules:
 
 If HH/HL count >= 4:
-    Breadth = Broad Participation
+    Breadth = Broad Leadership
 
 If HH/HL count <= 2:
     Breadth = Narrow Leadership
@@ -136,7 +136,7 @@ If HH/HL count <= 2:
 Else:
     Breadth = Fragmented
 
-Breadth is descriptive only.
+Breadth is descriptive only..
 
 ---
 
