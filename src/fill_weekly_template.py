@@ -11,7 +11,11 @@ from typing import Dict, List, Tuple
 import pandas as pd
 
 DEFENSIVE = {"XLP", "XLU", "XLV"}
-CYCLICAL = {"XLF", "XLI", "XLB", "XLY", "XLK"}  # NZ2 cyclical set  # keep XLE cyclical here for tilt context
+CYCLICAL = {"XLF", "XLI", "XLB", "XLY", "XLK"}  # NZ2 cyclical set
+
+
+ALLOWED_BREADTH = {"Broad Leadership", "Narrow Leadership", "Fragmented"}
+ALLOWED_TILT = {"Defensive Tilt", "Cyclical Tilt", "Balanced"}
 
 
 def load_summary(csv_path: Path) -> pd.DataFrame:
@@ -61,6 +65,63 @@ def persistent_leaders(df: pd.DataFrame) -> List[str]:
 
 def transitions(df: pd.DataFrame) -> List[str]:
     return df[df["Direction"] == "TRANSITION"]["Ticker"].tolist()
+
+
+def normalize_breadth(raw: str, hh_hl_count: int) -> str:
+    """
+    Enforce Now Zone 2 breadth vocabulary.
+    If JSON provides non-standard wording, map or recompute deterministically.
+    Master logic:
+      Broad Leadership: 4+ sectors in HH/HL
+      Narrow Leadership: 1–2 Persistent Leaders only (handled elsewhere) but breadth naming stays allowed set
+      Fragmented: mixed signals across sectors
+    Here we keep it minimal:
+      - Map common non-standard terms
+      - If still invalid, compute from HH/HL count
+    """
+    if not raw:
+        raw = "n/a"
+
+    mapping = {
+        "Broad Participation": "Broad Leadership",
+        "Broad": "Broad Leadership",
+        "Narrow": "Narrow Leadership",
+    }
+    raw = mapping.get(raw, raw)
+
+    if raw in ALLOWED_BREADTH:
+        return raw
+
+    # Deterministic fallback based on HH/HL count only
+    if hh_hl_count >= 4:
+        return "Broad Leadership"
+    return "Fragmented"
+
+
+def normalize_tilt(raw: str, def_hh: int, cyc_hh: int) -> str:
+    """
+    Enforce tilt vocabulary.
+    If JSON contains unexpected wording, compute deterministically.
+    """
+    if not raw:
+        raw = "n/a"
+
+    mapping = {
+        "Defensive": "Defensive Tilt",
+        "Cyclical": "Cyclical Tilt",
+        "Neutral": "Balanced",
+    }
+    raw = mapping.get(raw, raw)
+
+    if raw in ALLOWED_TILT:
+        return raw
+
+    # Deterministic fallback based on counts
+    if def_hh >= 3:
+        return "Defensive Tilt"
+    if cyc_hh >= 3:
+        return "Cyclical Tilt"
+    return "Balanced"
 
 
 def risk_state_from_rules(df: pd.DataFrame, tilt: str) -> Tuple[str, List[str]]:
@@ -164,7 +225,6 @@ def replace_section1_table(text: str, table_md: str) -> str:
     return text[: m.start(2)] + table_md + "\n\n" + text[m.end(2) :]
 
 
-
 def replace_market_risk_state_line(text: str, risk_state: str) -> str:
     """Replace the selected Risk State line under '## 4. Market Risk State' regardless of template option wording."""
     pat = re.compile(r"(## 4\. Market Risk State\s*\n\s*\n)([^\n]+)")
@@ -174,9 +234,7 @@ def replace_market_risk_state_line(text: str, risk_state: str) -> str:
     return text[: m.start(2)] + risk_state + text[m.end(2) :]
 
 
-
 def ensure_transition_bullet(out: str) -> str:
-    # Fix lines that start with "TRANSITION → ..." missing "- "
     out = re.sub(r"(?m)^(TRANSITION\s*→\s*.+)$", r"- \1", out)
     return out
 
@@ -188,21 +246,29 @@ def relabel_bottom3_by_rank(out: str) -> str:
 
 
 def normalize_rotation_line(out: str) -> str:
-    # Remove accidental duplication
     out = re.sub(r"(?m)^- Rotation signals:\s*Rotation signals:\s*n/a\s*$", r"- Rotation signals: n/a", out)
     return out
 
 
 def normalize_bullet_spacing(out: str) -> str:
-    """
-    Ensure markdown list items use '- ' (dash + space).
-    Fixes: '-HH/HL' -> '- HH/HL', '-Emerging Leader' -> '- Emerging Leader'
-    Does NOT touch tables ('| ...') or horizontal rules ('---').
-    """
-    # Only lines that start with '-' followed by a non-space and not another dash
-    # (so we don't change '---' horizontal rules)
     out = re.sub(r"(?m)^-([^\s-])", r"- \1", out)
     return out
+
+
+def replace_closing_section(out: str, closing_text: str) -> str:
+    """
+    Robustly inject a closing statement under '## 5. Closing Statement'
+    by replacing everything in that section until the next '##' or end of file.
+    """
+    pat = re.compile(r"(## 5\. Closing Statement\s*\n)(.*?)(\n##\s|\Z)", re.S)
+    m = pat.search(out)
+    if not m:
+        # If section missing, append at end
+        return out.rstrip() + "\n\n## 5. Closing Statement\n\n" + closing_text + "\n"
+    before = out[: m.start(2)]
+    after = out[m.end(2) :]
+    # Keep the next header marker (m.group(3)) already included in "after"
+    return before + "\n" + closing_text.strip() + "\n\n" + after.lstrip("\n")
 
 
 def fill_template(
@@ -217,9 +283,13 @@ def fill_template(
     def_hh, cyc_hh = defensive_cyclical_counts(df)
     pers = persistent_leaders(df)
     trans = transitions(df)
+    counts = compute_counts(df)
 
-    breadth = meta.get("breadth", "n/a")
-    tilt = meta.get("tilt", "n/a")
+    # Normalize breadth/tilt so forbidden terms cannot leak into the brief
+    raw_breadth = meta.get("breadth", "n/a")
+    raw_tilt = meta.get("tilt", "n/a")
+    breadth = normalize_breadth(raw_breadth, counts["HH_HL"])
+    tilt = normalize_tilt(raw_tilt, def_hh, cyc_hh)
 
     risk_state, risk_just = risk_state_from_rules(df, tilt)
 
@@ -229,7 +299,7 @@ def fill_template(
     out = replace_line(out, r"^Week:\s*.*$", f"Week: {week}")
     out = replace_line(out, r"^Date:\s*.*$", f"Date: {brief_date}")
 
-    # Ranking table injection (first occurrence)
+    # Ranking table injection
     ranking_table = build_ranking_table(df)
     out = replace_section1_table(out, ranking_table)
 
@@ -241,33 +311,31 @@ def fill_template(
     out = replace_line(out, r"^Tilt:.*$", f"Tilt: {tilt}")
     out = replace_line(out, r"^Change vs Last Week:.*$", f"Change vs Last Week: {change_vs_last}")
 
-    # Structural Observations bullets (deterministic)
-    leadership_conc = "Leadership concentrated in 3 sectors."
+    # Structural Observations (deterministic, computed)
+    # Use Persistent Leader count for "leadership concentrated" (matches your earlier usage)
+    leadership_conc = f"Leadership concentrated in {len(pers)} sectors."
     def_line = f"Defensive sectors show {def_hh} HH/HL structure count."
     cyc_line = f"Cyclical sectors show {cyc_hh} HH/HL structure count."
     change_line = f"Change vs prior week: {change_vs_last} sectors shifted classification."
 
     out = replace_line(out, r"^- Leadership concentration:.*$", f"- {leadership_conc}")
-
     rot_text = f"TRANSITION sectors: {fmt_list(trans)}" if trans else "n/a"
     out = replace_line(out, r"^- Rotation signals:.*$", f"- Rotation signals: {rot_text}")
-
     out = replace_line(out, r"^- Defensive behavior:.*$", f"- {def_line}")
     out = replace_line(out, r"^- Cyclical confirmation:.*$", f"- {cyc_line}")
 
-    # If bullets don't exist (template variant), insert a neutral paragraph block
     if "## 2. Structural Observations" in out and leadership_conc not in out:
         out = out.replace(
             "## 2. Structural Observations",
             "## 2. Structural Observations\n\n"
             f"{leadership_conc}\n\n"
-            f"Defensive sectors show {def_hh} HH/HL structure count.\n\n"
-            f"Cyclical sectors show {cyc_hh} HH/HL structure count.\n\n"
+            f"{def_line}\n\n"
+            f"{cyc_line}\n\n"
             f"{change_line}\n",
             1,
         )
 
-    # Market Risk State selection line
+    # Market Risk State
     out = replace_market_risk_state_line(out, risk_state)
     if "Justification (max 3 lines)." in out:
         out = out.replace(
@@ -276,16 +344,15 @@ def fill_template(
             1,
         )
 
-    # Closing statement (neutral)
-    closing = (
-        f"Closing statement: Breadth classified as {breadth}. "
-        f"Leadership concentrated in {len(pers)} sectors. "
+    # Closing Statement (robust injection)
+    closing_text = (
+        f"Market structure reflects {breadth} based on {counts['HH_HL']} sectors in HH/HL classification. "
+        f"Leadership concentration is defined by {len(pers)} Persistent Leaders. "
         f"Tilt condition: {tilt}."
     )
-    out = replace_line(out, r"^Neutral structural summary\.\s*$", closing)
-    out = replace_line(out, r"^No forecast language\.\s*$", "No forecast language.")
+    out = replace_closing_section(out, closing_text)
 
-    # Normalizations / patches
+    # Normalizations
     out = ensure_transition_bullet(out)
     out = relabel_bottom3_by_rank(out)
     out = normalize_rotation_line(out)
