@@ -4,3 +4,4 @@ week,deviation_type,layer,description,action_taken,system_modified,resolved
 2026_W01,Logic,Template,Leadership concentration hardcoded as 3 sectors in filler script,Replaced hardcoded value with computed Persistent Leader count,Yes,Yes
 2026_W01,Terminology,Engine,Breadth label used Broad Participation instead of Broad Leadership,Updated classify_breadth output in weekly_structure_engine.py,Yes,Yes
 2026_W01,Governance,Rules,STRUCTURE_CLASSIFICATION_RULES.md used Broad Participation terminology,Aligned rules document to Broad Leadership standard,No,Yes
+2026_W02,Ranking,Brief,Bottom 3 by 4W Rank listed XLV instead of XLK,Corrected Bottom 3 ranking in 2026_W02.md,No,Yes
