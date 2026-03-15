@@ -13,7 +13,6 @@ import pandas as pd
 DEFENSIVE = {"XLP", "XLU", "XLV"}
 CYCLICAL = {"XLF", "XLI", "XLB", "XLY", "XLK"}  # NZ2 cyclical set
 
-
 ALLOWED_BREADTH = {"Broad Leadership", "Narrow Leadership", "Fragmented"}
 ALLOWED_TILT = {"Defensive Tilt", "Cyclical Tilt", "Balanced"}
 
@@ -33,13 +32,54 @@ def load_classification(json_path: Path) -> Dict:
         return json.load(f)
 
 
+def week_to_num(week: str) -> Tuple[int, int]:
+    m = re.fullmatch(r"(\d{4})_W(\d{2})", week)
+    if not m:
+        raise ValueError(f"Invalid week format: {week}. Expected YYYY_WNN")
+    return int(m.group(1)), int(m.group(2))
+
+
+def previous_week_code(week: str) -> str | None:
+    year, wk = week_to_num(week)
+    if wk <= 1:
+        return None
+    return f"{year}_W{wk-1:02d}"
+
+
+def infer_previous_paths(
+    current_summary: Path,
+    current_json: Path,
+    current_week: str,
+) -> Tuple[Path | None, Path | None]:
+    """
+    If current files are in week folders like out/2026_W03/...,
+    infer out/2026_W02/... automatically.
+    """
+    prev_week = previous_week_code(current_week)
+    if prev_week is None:
+        return None, None
+
+    summary_str = str(current_summary)
+    json_str = str(current_json)
+
+    prev_summary = Path(summary_str.replace(current_week, prev_week))
+    prev_json = Path(json_str.replace(current_week, prev_week))
+
+    if not prev_summary.exists():
+        prev_summary = None
+    if not prev_json.exists():
+        prev_json = None
+
+    return prev_summary, prev_json
+
+
 def fmt_list(items: List[str]) -> str:
     return ", ".join(items) if items else "n/a"
 
 
 def compute_top_bottom(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
     top3 = df.head(3)["Ticker"].tolist()
-    bot3 = df.tail(3)["Ticker"].tolist()
+    bot3 = df.tail(3).sort_values("Rank", ascending=False)["Ticker"].tolist()
     return top3, bot3
 
 
@@ -71,13 +111,6 @@ def normalize_breadth(raw: str, hh_hl_count: int) -> str:
     """
     Enforce Now Zone 2 breadth vocabulary.
     If JSON provides non-standard wording, map or recompute deterministically.
-    Master logic:
-      Broad Leadership: 4+ sectors in HH/HL
-      Narrow Leadership: 1–2 Persistent Leaders only (handled elsewhere) but breadth naming stays allowed set
-      Fragmented: mixed signals across sectors
-    Here we keep it minimal:
-      - Map common non-standard terms
-      - If still invalid, compute from HH/HL count
     """
     if not raw:
         raw = "n/a"
@@ -92,7 +125,6 @@ def normalize_breadth(raw: str, hh_hl_count: int) -> str:
     if raw in ALLOWED_BREADTH:
         return raw
 
-    # Deterministic fallback based on HH/HL count only
     if hh_hl_count >= 4:
         return "Broad Leadership"
     return "Fragmented"
@@ -116,7 +148,6 @@ def normalize_tilt(raw: str, def_hh: int, cyc_hh: int) -> str:
     if raw in ALLOWED_TILT:
         return raw
 
-    # Deterministic fallback based on counts
     if def_hh >= 3:
         return "Defensive Tilt"
     if cyc_hh >= 3:
@@ -180,24 +211,98 @@ def risk_state_from_rules(df: pd.DataFrame, tilt: str) -> Tuple[str, List[str]]:
     ]
 
 
-def compute_change_vs_last_week(curr_df: pd.DataFrame, prev_df: pd.DataFrame | None) -> str:
-    if prev_df is None:
-        return "n/a"
+def compare_current_vs_previous(
+    curr_df: pd.DataFrame,
+    curr_meta: Dict,
+    prev_df: pd.DataFrame | None,
+    prev_meta: Dict | None,
+) -> Dict | None:
+    if prev_df is None or prev_meta is None:
+        return None
 
-    prev = prev_df.set_index("Ticker")[["Direction", "Leadership"]]
-    curr = curr_df.set_index("Ticker")[["Direction", "Leadership"]]
+    prev = prev_df.set_index("Ticker")[["Direction", "Leadership", "Rank"]]
+    curr = curr_df.set_index("Ticker")[["Direction", "Leadership", "Rank"]]
 
     common = prev.index.intersection(curr.index)
     if common.empty:
-        return "n/a"
+        return None
 
-    changed = 0
+    direction_shift_count = 0
+    leadership_shift_count = 0
+    rank_change_count = 0
+
     for t in common:
-        if (prev.loc[t, "Direction"] != curr.loc[t, "Direction"]) or (
-            prev.loc[t, "Leadership"] != curr.loc[t, "Leadership"]
-        ):
-            changed += 1
-    return str(changed)
+        if prev.loc[t, "Direction"] != curr.loc[t, "Direction"]:
+            direction_shift_count += 1
+        if prev.loc[t, "Leadership"] != curr.loc[t, "Leadership"]:
+            leadership_shift_count += 1
+        if int(prev.loc[t, "Rank"]) != int(curr.loc[t, "Rank"]):
+            rank_change_count += 1
+
+    result = {
+        "direction_shift_count": direction_shift_count,
+        "leadership_shift_count": leadership_shift_count,
+        "rank_change_count": rank_change_count,
+        "hhhl_delta": int(curr_meta.get("count_HH_HL", 0)) - int(prev_meta.get("count_HH_HL", 0)),
+        "lhll_delta": int(curr_meta.get("count_LH_LL", 0)) - int(prev_meta.get("count_LH_LL", 0)),
+        "range_delta": int(curr_meta.get("count_RANGE", 0)) - int(prev_meta.get("count_RANGE", 0)),
+        "transition_delta": int(curr_meta.get("count_TRANSITION", 0)) - int(prev_meta.get("count_TRANSITION", 0)),
+        "breadth_changed": curr_meta.get("breadth", "n/a") != prev_meta.get("breadth", "n/a"),
+        "tilt_changed": curr_meta.get("tilt", "n/a") != prev_meta.get("tilt", "n/a"),
+        "previous_breadth": prev_meta.get("breadth", "n/a"),
+        "current_breadth": curr_meta.get("breadth", "n/a"),
+        "previous_tilt": prev_meta.get("tilt", "n/a"),
+        "current_tilt": curr_meta.get("tilt", "n/a"),
+    }
+    return result
+
+
+def signed_sector_text(value: int, label: str) -> str:
+    sign = "+" if value > 0 else ""
+    plural = "sector" if abs(value) == 1 else "sectors"
+    return f"{sign}{value} {label} {plural}"
+
+
+def generate_change_vs_last_week(compare_result: Dict | None) -> str:
+    if compare_result is None:
+        return "baseline week"
+
+    parts: List[str] = []
+
+    n = compare_result["direction_shift_count"]
+    if n > 0:
+        noun = "sector" if n == 1 else "sectors"
+        parts.append(f"{n} {noun} changed direction classification")
+
+    if compare_result["hhhl_delta"] != 0:
+        parts.append(signed_sector_text(compare_result["hhhl_delta"], "HH/HL"))
+
+    if compare_result["lhll_delta"] != 0:
+        parts.append(signed_sector_text(compare_result["lhll_delta"], "LH/LL"))
+
+    if compare_result["breadth_changed"]:
+        parts.append(
+            f"Breadth changed from {compare_result['previous_breadth']} to {compare_result['current_breadth']}"
+        )
+
+    if compare_result["tilt_changed"]:
+        parts.append(
+            f"Tilt changed from {compare_result['previous_tilt']} to {compare_result['current_tilt']}"
+        )
+
+    if not parts:
+        return "No structural change detected versus prior week."
+
+    return "; ".join(parts) + "."
+
+
+def generate_change_vs_prior_week(compare_result: Dict | None) -> str:
+    if compare_result is None:
+        return "Change vs prior week: baseline week."
+
+    n = compare_result["direction_shift_count"]
+    noun = "sector" if n == 1 else "sectors"
+    return f"Change vs prior week: {n} {noun} shifted classification."
 
 
 def build_ranking_table(df: pd.DataFrame) -> str:
@@ -263,12 +368,104 @@ def replace_closing_section(out: str, closing_text: str) -> str:
     pat = re.compile(r"(## 5\. Closing Statement\s*\n)(.*?)(\n##\s|\Z)", re.S)
     m = pat.search(out)
     if not m:
-        # If section missing, append at end
         return out.rstrip() + "\n\n## 5. Closing Statement\n\n" + closing_text + "\n"
     before = out[: m.start(2)]
     after = out[m.end(2) :]
-    # Keep the next header marker (m.group(3)) already included in "after"
     return before + "\n" + closing_text.strip() + "\n\n" + after.lstrip("\n")
+
+
+def strip_template_instructions(out: str) -> str:
+    """
+    Remove template-only instructional text so the final brief is publishable.
+    Keeps the section headers and the populated content, but removes guidance blocks.
+    """
+    lines = out.splitlines()
+    cleaned: List[str] = []
+
+    skip_starts = (
+        "Allowed Structure Labels",
+        "Allowed sentence formats",
+        "Forbidden",
+        "Risk State Determination",
+        "Watchlist entry format",
+        "Use only if valid structural setup exists",
+        "No creative wording",
+        "Do not use prediction language",
+        "Do not use confidence language",
+        "Use only these labels",
+        "Only include sectors currently in",
+        "If no valid setup exists",
+        "Select one:",
+    )
+
+    skip_contains = (
+        "Allowed Structure Labels",
+        "Allowed sentence formats",
+        "Risk State Determination",
+        "Watchlist entry format",
+        "No creative wording",
+        "Do not use prediction language",
+        "Do not use confidence language",
+        "Use only these labels",
+        "Use only if valid structural setup exists",
+        "If no valid setup exists",
+    )
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped in {
+            "- Leadership concentration:",
+            "- Rotation signals:",
+            "- Defensive behavior:",
+            "- Cyclical confirmation:",
+            "- Change vs prior week:",
+        }:
+            continue
+
+        if stripped.startswith(skip_starts):
+            continue
+
+        if any(token in stripped for token in skip_contains):
+            continue
+
+        if stripped.startswith("- Allowed"):
+            continue
+        if stripped.startswith("- Forbidden"):
+            continue
+        if stripped.startswith("- Use only"):
+            continue
+        if stripped.startswith("- Do not use"):
+            continue
+        if stripped.startswith("- If no valid"):
+            continue
+        if stripped.startswith("- Select one"):
+            continue
+
+        if stripped in {
+            "[ETF] — [Structure label] — [One-line structural reason]",
+            "Justification (max 3 lines).",
+        }:
+            continue
+
+        cleaned.append(line)
+
+    text = "\n".join(cleaned)
+
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    if re.search(r"## 3\. Tactical Watchlist\s*(?:\n\s*)+## 4\.", text, flags=re.S):
+        text = re.sub(
+            r"(## 3\. Tactical Watchlist\s*\n\s*)(## 4\.)",
+            r"\1No valid structural watchlist candidate this week.\n\n\2",
+            text,
+            flags=re.S,
+        )
+
+    text = re.sub(r"(?m)^\s*-\s*-\s*", "- ", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+
+    return text.strip() + "\n"
 
 
 def fill_template(
@@ -278,6 +475,7 @@ def fill_template(
     df: pd.DataFrame,
     meta: Dict,
     change_vs_last: str,
+    change_vs_prior_week_line: str,
 ) -> str:
     top3, bot3 = compute_top_bottom(df)
     def_hh, cyc_hh = defensive_cyclical_counts(df)
@@ -285,7 +483,6 @@ def fill_template(
     trans = transitions(df)
     counts = compute_counts(df)
 
-    # Normalize breadth/tilt so forbidden terms cannot leak into the brief
     raw_breadth = meta.get("breadth", "n/a")
     raw_tilt = meta.get("tilt", "n/a")
     breadth = normalize_breadth(raw_breadth, counts["HH_HL"])
@@ -295,15 +492,12 @@ def fill_template(
 
     out = template_text
 
-    # Header
     out = replace_line(out, r"^Week:\s*.*$", f"Week: {week}")
     out = replace_line(out, r"^Date:\s*.*$", f"Date: {brief_date}")
 
-    # Ranking table injection
     ranking_table = build_ranking_table(df)
     out = replace_section1_table(out, ranking_table)
 
-    # Simple fields
     out = replace_line(out, r"^Top 3 Leaders:.*$", f"Top 3 Leaders: {fmt_list(top3)}")
     out = replace_line(out, r"^Bottom 3 Laggards:.*$", f"Bottom 3 by 4W Rank: {fmt_list(bot3)}")
     out = replace_line(out, r"^Bottom 3 by 4W Rank:.*$", f"Bottom 3 by 4W Rank: {fmt_list(bot3)}")
@@ -311,32 +505,32 @@ def fill_template(
     out = replace_line(out, r"^Tilt:.*$", f"Tilt: {tilt}")
     out = replace_line(out, r"^Change vs Last Week:.*$", f"Change vs Last Week: {change_vs_last}")
 
-    # Structural Observations (deterministic, computed)
-    # Use Persistent Leader count for "leadership concentrated" (matches your earlier usage)
     leadership_conc = f"Leadership concentrated in {len(pers)} sectors."
     def_line = f"Defensive sectors show {def_hh} HH/HL structure count."
     cyc_line = f"Cyclical sectors show {cyc_hh} HH/HL structure count."
-    change_line = f"Change vs prior week: {change_vs_last} sectors shifted classification."
+    change_line = change_vs_prior_week_line
+    rot_text = f"TRANSITION sectors: {fmt_list(trans)}" if trans else "n/a"
 
     out = replace_line(out, r"^- Leadership concentration:.*$", f"- {leadership_conc}")
-    rot_text = f"TRANSITION sectors: {fmt_list(trans)}" if trans else "n/a"
     out = replace_line(out, r"^- Rotation signals:.*$", f"- Rotation signals: {rot_text}")
     out = replace_line(out, r"^- Defensive behavior:.*$", f"- {def_line}")
     out = replace_line(out, r"^- Cyclical confirmation:.*$", f"- {cyc_line}")
+    out = replace_line(out, r"^- Change vs prior week:.*$", f"- {change_line}")
 
     if "## 2. Structural Observations" in out and leadership_conc not in out:
         out = out.replace(
             "## 2. Structural Observations",
             "## 2. Structural Observations\n\n"
-            f"{leadership_conc}\n\n"
-            f"{def_line}\n\n"
-            f"{cyc_line}\n\n"
-            f"{change_line}\n",
+            f"- {leadership_conc}\n"
+            f"- Rotation signals: {rot_text}\n"
+            f"- {def_line}\n"
+            f"- {cyc_line}\n"
+            f"- {change_line}\n",
             1,
         )
 
-    # Market Risk State
     out = replace_market_risk_state_line(out, risk_state)
+
     if "Justification (max 3 lines)." in out:
         out = out.replace(
             "Justification (max 3 lines).",
@@ -344,7 +538,6 @@ def fill_template(
             1,
         )
 
-    # Closing Statement (robust injection)
     closing_text = (
         f"Market structure reflects {breadth} based on {counts['HH_HL']} sectors in HH/HL classification. "
         f"Leadership concentration is defined by {len(pers)} Persistent Leaders. "
@@ -352,11 +545,11 @@ def fill_template(
     )
     out = replace_closing_section(out, closing_text)
 
-    # Normalizations
     out = ensure_transition_bullet(out)
     out = relabel_bottom3_by_rank(out)
     out = normalize_rotation_line(out)
     out = normalize_bullet_spacing(out)
+    out = strip_template_instructions(out)
 
     return out
 
@@ -390,12 +583,35 @@ def main() -> None:
     meta = payload.get("meta", {})
 
     prev_df = None
-    if args.prev_summary:
-        prev_path = Path(args.prev_summary)
-        if prev_path.exists():
-            prev_df = load_summary(prev_path)
+    prev_meta = None
 
-    change_vs_last = compute_change_vs_last_week(df, prev_df)
+    if args.prev_summary:
+        prev_summary_path = Path(args.prev_summary)
+        if prev_summary_path.exists():
+            prev_df = load_summary(prev_summary_path)
+
+    inferred_prev_summary, inferred_prev_json = infer_previous_paths(
+        current_summary=summary_path,
+        current_json=json_path,
+        current_week=args.week,
+    )
+
+    if prev_df is None and inferred_prev_summary is not None and inferred_prev_summary.exists():
+        prev_df = load_summary(inferred_prev_summary)
+
+    if inferred_prev_json is not None and inferred_prev_json.exists():
+        prev_payload = load_classification(inferred_prev_json)
+        prev_meta = prev_payload.get("meta", {})
+
+    compare_result = compare_current_vs_previous(
+        curr_df=df,
+        curr_meta=meta,
+        prev_df=prev_df,
+        prev_meta=prev_meta,
+    )
+
+    change_vs_last = generate_change_vs_last_week(compare_result)
+    change_vs_prior_week_line = generate_change_vs_prior_week(compare_result)
 
     filled = fill_template(
         template_text=template_text,
@@ -404,6 +620,7 @@ def main() -> None:
         df=df,
         meta=meta,
         change_vs_last=change_vs_last,
+        change_vs_prior_week_line=change_vs_prior_week_line,
     )
 
     out_path = Path(args.out) if args.out else Path("briefs") / f"{args.week}.md"
