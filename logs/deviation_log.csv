@@ -7,3 +7,4 @@ week,deviation_type,layer,description,action_taken,system_modified,resolved
 2026_W02,Ranking,Brief,Bottom 3 by 4W Rank listed XLV instead of XLK,Corrected Bottom 3 ranking in 2026_W02.md,No,Yes
 2026_W03,Engine,Brief Generation,Change vs Last Week displayed n/a because prior-week comparison logic was missing,Implemented automatic previous-week detection and comparison logic,No,Yes
 2026_W03,Template,Brief Output,Generated brief contained template instruction text and placeholders,Added strip_template_instructions() cleanup layer to remove template scaffolding,No,Yes
+2026_W04,None,VisualAudit,No deviation detected,No action required,No,Yes
