@@ -183,7 +183,7 @@ def main() -> None:
     ap.add_argument("--outdir", default="out")
     ap.add_argument("--days", type=int, default=20)
     ap.add_argument("--half", type=int, default=10)
-    ap.add_argument("--epsilon", type=float, default=0.0)
+    ap.add_argument("--epsilon", type=float, default=1e-4)
     args = ap.parse_args()
 
     cfg = Config(days=args.days, half=args.half, epsilon=args.epsilon)
