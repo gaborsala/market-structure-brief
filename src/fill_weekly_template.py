@@ -78,9 +78,31 @@ def fmt_list(items: List[str]) -> str:
 
 
 def compute_top_bottom(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
+    """
+    Top 3: highest ranked sectors.
+    Bottom 3: prefer lowest-ranked LH/LL sectors first so the published laggards
+    reflect actual weak structure. If fewer than 3 LH/LL sectors exist, fall back
+    to the lowest-ranked remaining sectors.
+    """
     top3 = df.head(3)["Ticker"].tolist()
-    bot3 = df.tail(3).sort_values("Rank", ascending=False)["Ticker"].tolist()
-    return top3, bot3
+
+    laggards = (
+        df[df["Direction"] == "LH/LL"]
+        .sort_values("Rank", ascending=False)
+        .head(3)["Ticker"]
+        .tolist()
+    )
+
+    if len(laggards) < 3:
+        fallback = (
+            df[~df["Ticker"].isin(laggards)]
+            .sort_values("Rank", ascending=False)
+            .head(3 - len(laggards))["Ticker"]
+            .tolist()
+        )
+        laggards.extend(fallback)
+
+    return top3, laggards
 
 
 def compute_counts(df: pd.DataFrame) -> Dict[str, int]:
@@ -127,6 +149,8 @@ def normalize_breadth(raw: str, hh_hl_count: int) -> str:
 
     if hh_hl_count >= 4:
         return "Broad Leadership"
+    if hh_hl_count <= 2:
+        return "Narrow Leadership"
     return "Fragmented"
 
 
@@ -330,13 +354,27 @@ def replace_section1_table(text: str, table_md: str) -> str:
     return text[: m.start(2)] + table_md + "\n\n" + text[m.end(2) :]
 
 
-def replace_market_risk_state_line(text: str, risk_state: str) -> str:
-    """Replace the selected Risk State line under '## 4. Market Risk State' regardless of template option wording."""
-    pat = re.compile(r"(## 4\. Market Risk State\s*\n\s*\n)([^\n]+)")
+def replace_market_risk_state_section(text: str, risk_state: str, risk_just: List[str]) -> str:
+    """
+    Replace the full body of '## 4. Market Risk State' so no legacy template lines survive.
+    """
+    body = risk_state + "\n\n" + "\n".join(risk_just[:3])
+    pat = re.compile(r"(## 4\. Market Risk State\s*\n)(.*?)(\n## 5\.)", re.S)
     m = pat.search(text)
     if not m:
-        return text
-    return text[: m.start(2)] + risk_state + text[m.end(2) :]
+        return text.rstrip() + "\n\n## 4. Market Risk State\n\n" + body + "\n\n## 5. Closing Statement\n"
+    return text[: m.start(2)] + "\n" + body.strip() + "\n\n" + text[m.start(3):]
+
+
+def replace_watchlist_section(out: str, watchlist_text: str) -> str:
+    """
+    Replace the entire Tactical Watchlist body with a deterministic null-state sentence.
+    """
+    pat = re.compile(r"(## 3\. Tactical Watchlist.*?\n)(.*?)(\n## 4\.)", re.S)
+    m = pat.search(out)
+    if not m:
+        return out
+    return out[:m.start(2)] + "\n" + watchlist_text.strip() + "\n\n" + out[m.start(3):]
 
 
 def ensure_transition_bullet(out: str) -> str:
@@ -411,16 +449,48 @@ def strip_template_instructions(out: str) -> str:
         "If no valid setup exists",
     )
 
+    exact_remove = {
+        "- Leadership concentration:",
+        "- Rotation signals:",
+        "- Defensive behavior:",
+        "- Cyclical confirmation:",
+        "- Change vs prior week:",
+        "[ETF] — [Structure label] — [One-line structural reason]",
+        "Justification (max 3 lines).",
+        "Leadership concentrated in ___ sectors.",
+        "Breadth classified as ___ (Broad / Narrow / Fragmented).",
+        "Defensive sectors show ___ structure count.",
+        "Cyclical sectors show ___ structure count.",
+        "Change vs prior week: ___ sectors shifted classification.",
+        "“Momentum building”",
+        "“Market preparing”",
+        "“Likely continuation”",
+        "“Potential breakout”",
+        '"Momentum building"',
+        '"Market preparing"',
+        '"Likely continuation"',
+        '"Potential breakout"',
+        "Only description.",
+        "No alternatives.",
+        "No emotional phrasing.",
+        "Tactical entries must be triggered by structural break only.",
+        "Relative break of prior 4-week high or low.",
+        "No anticipation entries.",
+        "Invalidation must be structure-based.",
+        "Risk Context must be one of:",
+    }
+
     for line in lines:
         stripped = line.strip()
 
-        if stripped in {
-            "- Leadership concentration:",
-            "- Rotation signals:",
-            "- Defensive behavior:",
-            "- Cyclical confirmation:",
-            "- Change vs prior week:",
-        }:
+        if not stripped:
+            cleaned.append(line)
+            continue
+
+        if "___" in stripped:
+            continue
+
+        if stripped in exact_remove:
             continue
 
         if stripped.startswith(skip_starts):
@@ -442,26 +512,11 @@ def strip_template_instructions(out: str) -> str:
         if stripped.startswith("- Select one"):
             continue
 
-        if stripped in {
-            "[ETF] — [Structure label] — [One-line structural reason]",
-            "Justification (max 3 lines).",
-        }:
-            continue
-
         cleaned.append(line)
 
     text = "\n".join(cleaned)
 
     text = re.sub(r"\n{3,}", "\n\n", text)
-
-    if re.search(r"## 3\. Tactical Watchlist\s*(?:\n\s*)+## 4\.", text, flags=re.S):
-        text = re.sub(
-            r"(## 3\. Tactical Watchlist\s*\n\s*)(## 4\.)",
-            r"\1No valid structural watchlist candidate this week.\n\n\2",
-            text,
-            flags=re.S,
-        )
-
     text = re.sub(r"(?m)^\s*-\s*-\s*", "- ", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
 
@@ -529,14 +584,8 @@ def fill_template(
             1,
         )
 
-    out = replace_market_risk_state_line(out, risk_state)
-
-    if "Justification (max 3 lines)." in out:
-        out = out.replace(
-            "Justification (max 3 lines).",
-            "Justification (max 3 lines).\n" + "\n".join(risk_just[:3]),
-            1,
-        )
+    out = replace_watchlist_section(out, "No valid structural watchlist candidate this week.")
+    out = replace_market_risk_state_section(out, risk_state, risk_just)
 
     closing_text = (
         f"Market structure reflects {breadth} based on {counts['HH_HL']} sectors in HH/HL classification. "
