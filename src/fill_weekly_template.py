@@ -520,6 +520,12 @@ def strip_template_instructions(out: str) -> str:
     text = re.sub(r"(?m)^\s*-\s*-\s*", "- ", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
 
+    # Remove definition blocks (4W Direction + Leadership Status)
+    text = re.sub(r"(?s)\n?4W Direction:.*?Neutral\s*\n", "\n", text)
+
+    # Remove separator noise like "- -"
+    text = re.sub(r"(?m)^-\s*-\s*$\n?", "", text)
+    
     return text.strip() + "\n"
 
 

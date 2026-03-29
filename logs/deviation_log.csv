@@ -8,3 +8,5 @@ week,deviation_type,layer,description,action_taken,system_modified,resolved
 2026_W03,Engine,Brief Generation,Change vs Last Week displayed n/a because prior-week comparison logic was missing,Implemented automatic previous-week detection and comparison logic,No,Yes
 2026_W03,Template,Brief Output,Generated brief contained template instruction text and placeholders,Added strip_template_instructions() cleanup layer to remove template scaffolding,No,Yes
 2026_W04,None,VisualAudit,No deviation detected,No action required,No,Yes
+2026_W05,Template,Brief,Instructional template text remained in final output,Extend template cleanup rules in fill script,No,Yes
+2026_W05,Formatting,Brief,Visual separator lines (- -) remain in output,Normalize or remove separator formatting in template,No,Yes
