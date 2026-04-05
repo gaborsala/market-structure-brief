@@ -2,3 +2,15 @@ week,date,hhhl_count,lhll_count,transition_count,mismatches,breadth_consistent,l
 2026_W04,2026-03-21,2,7,2,0,Yes,Yes,Yes,All classifications validated
 2026_W05,Moderate,Template leakage and language violations reduced output quality but structural classification remained valid
 2026_W05,Low,Minor template residue and formatting noise remain but structural classification and execution significantly improved
+week,ticker,engine_direction,visual_direction,alignment,notes
+2026_W06,XLE,TRANSITION,Transition,Aligned,Recent structure break detected correctly after override patch
+2026_W06,XLF,HH/HL,HH/HL,Aligned,Only valid leader remains intact
+2026_W06,XLB,TRANSITION,Transition,Aligned,No continuation after impulse move
+2026_W06,XLU,TRANSITION,Transition,Aligned,Pullback phase after prior strength
+2026_W06,XLY,LH/LL,LH/LL,Aligned,Clear downtrend continuation
+2026_W06,XLC,LH/LL,LH/LL,Aligned,Weak structure persists
+2026_W06,XLI,LH/LL,LH/LL,Aligned,Lower highs dominate
+2026_W06,XLK,LH/LL,LH/LL,Aligned,No confirmed reversal yet
+2026_W06,XLRE,TRANSITION,Transition,Aligned,Stabilization without structure recovery
+2026_W06,XLV,TRANSITION,Range/Transition,Aligned,No clear directional structure
+2026_W06,XLP,TRANSITION,Transition,Aligned,Weak recovery without continuation

@@ -57,6 +57,44 @@ def ratio_return(series: pd.Series) -> float:
     return (s.iloc[-1] / s.iloc[0]) - 1.0
 
 
+def apply_recent_structure_override(series: pd.Series, base_direction: str, cfg: Config) -> str:
+    """
+    Minimal NZ2-safe override:
+    - If a recent HH/HL trend loses its near-term higher-low support, downgrade to TRANSITION.
+    - If a recent LH/LL trend loses its near-term lower-high resistance, upgrade to TRANSITION.
+
+    This prevents stale classifications when the 10-vs-10 window still looks strong,
+    but the most recent 5 sessions clearly show a structural break.
+    """
+    s = series.dropna().tail(cfg.days)
+    if len(s) < 10:
+        return base_direction
+
+    eps = cfg.epsilon
+
+    prior_5 = s.iloc[-10:-5]
+    recent_5 = s.iloc[-5:]
+
+    if len(prior_5) < 5 or len(recent_5) < 5:
+        return base_direction
+
+    if base_direction == "HH/HL":
+        broke_recent_hl = recent_5.min() < (prior_5.min() - eps)
+        closed_below_recent_support = s.iloc[-1] < (prior_5.min() - eps)
+
+        if broke_recent_hl or closed_below_recent_support:
+            return "TRANSITION"
+
+    if base_direction == "LH/LL":
+        reclaimed_recent_lh = recent_5.max() > (prior_5.max() + eps)
+        closed_above_recent_resistance = s.iloc[-1] > (prior_5.max() + eps)
+
+        if reclaimed_recent_lh or closed_above_recent_resistance:
+            return "TRANSITION"
+
+    return base_direction
+
+
 def direction_label(series: pd.Series, cfg: Config) -> str:
     s = series.dropna()
     if len(s) < cfg.days:
@@ -78,19 +116,20 @@ def direction_label(series: pd.Series, cfg: Config) -> str:
     lower_low = (min2 < min1 - eps)
 
     if higher_high and higher_low:
-        return "HH/HL"
-    if lower_high and lower_low:
-        return "LH/LL"
-
-    if (
+        base_direction = "HH/HL"
+    elif lower_high and lower_low:
+        base_direction = "LH/LL"
+    elif (
         (higher_high and not higher_low)
         or (higher_low and not higher_high)
         or (lower_high and not lower_low)
         or (lower_low and not lower_high)
     ):
-        return "TRANSITION"
+        base_direction = "TRANSITION"
+    else:
+        base_direction = "RANGE"
 
-    return "RANGE"
+    return apply_recent_structure_override(s, base_direction, cfg)
 
 
 def leadership_status(rank: int, direction: str, ret_4w: float, ret_5d: float) -> str:

@@ -10,3 +10,8 @@ week,deviation_type,layer,description,action_taken,system_modified,resolved
 2026_W04,None,VisualAudit,No deviation detected,No action required,No,Yes
 2026_W05,Template,Brief,Instructional template text remained in final output,Extend template cleanup rules in fill script,No,Yes
 2026_W05,Formatting,Brief,Visual separator lines (- -) remain in output,Normalize or remove separator formatting in template,No,Yes
+week,type,description,action_taken,status
+2026_W06,Classification Lag,XLE remained HH/HL despite clear structural breakdown,Added recent-structure override rule to downgrade HH/HL to TRANSITION,Resolved
+2026_W06,Template Wording,Top 3 labeled as Leaders despite TRANSITION state,Changed label to "Top 3 by 4W Relative Strength",Resolved
+2026_W06,Grammar Issue,Incorrect pluralization (1 sectors, structure count phrasing),Implemented pluralization helper function,Resolved
+2026_W06,Leadership Logic,Leadership concentration based only on Persistent Leaders caused inconsistency,Shifted to HH/HL-based leadership description,Resolved

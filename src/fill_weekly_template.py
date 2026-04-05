@@ -77,11 +77,17 @@ def fmt_list(items: List[str]) -> str:
     return ", ".join(items) if items else "n/a"
 
 
+def pluralize(value: int, singular: str, plural: str | None = None) -> str:
+    if plural is None:
+        plural = singular + "s"
+    return singular if value == 1 else plural
+
+
 def compute_top_bottom(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
     """
-    Top 3: highest ranked sectors.
-    Bottom 3: prefer lowest-ranked LH/LL sectors first so the published laggards
-    reflect actual weak structure. If fewer than 3 LH/LL sectors exist, fall back
+    Top 3 = highest ranked sectors by 4W relative strength.
+    Bottom 3 = prefer lowest-ranked LH/LL sectors first so the published weak group
+    reflects actual weak structure. If fewer than 3 LH/LL sectors exist, fall back
     to the lowest-ranked remaining sectors.
     """
     top3 = df.head(3)["Ticker"].tolist()
@@ -123,6 +129,10 @@ def defensive_cyclical_counts(df: pd.DataFrame) -> Tuple[int, int]:
 
 def persistent_leaders(df: pd.DataFrame) -> List[str]:
     return df[df["Leadership"] == "Persistent Leader"]["Ticker"].tolist()
+
+
+def active_hhhl_sectors(df: pd.DataFrame) -> List[str]:
+    return df[df["Direction"] == "HH/HL"]["Ticker"].tolist()
 
 
 def transitions(df: pd.DataFrame) -> List[str]:
@@ -202,8 +212,8 @@ def risk_state_from_rules(df: pd.DataFrame, tilt: str) -> Tuple[str, List[str]]:
 
     if def_hh >= 3:
         return "Defensive Shift", [
-            f"Defensive sectors show {def_hh} HH/HL structures.",
-            f"Cyclical sectors show {cyc_hh} HH/HL structures.",
+            f"Defensive sectors show {def_hh} HH/HL {pluralize(def_hh, 'structure')}.",
+            f"Cyclical sectors show {cyc_hh} HH/HL {pluralize(cyc_hh, 'structure')}.",
             f"Breadth based on HH/HL count: {counts['HH_HL']}.",
         ]
 
@@ -520,13 +530,36 @@ def strip_template_instructions(out: str) -> str:
     text = re.sub(r"(?m)^\s*-\s*-\s*", "- ", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
 
-    # Remove definition blocks (4W Direction + Leadership Status)
     text = re.sub(r"(?s)\n?4W Direction:.*?Neutral\s*\n", "\n", text)
-
-    # Remove separator noise like "- -"
     text = re.sub(r"(?m)^-\s*-\s*$\n?", "", text)
-    
+
     return text.strip() + "\n"
+
+
+def build_leadership_observation(hh_hl_count: int) -> str:
+    if hh_hl_count == 0:
+        return "Leadership is absent, with no sectors in HH/HL structure."
+    if hh_hl_count == 1:
+        return "Leadership remains limited, with 1 sector in HH/HL structure."
+    return f"Leadership remains limited, with {hh_hl_count} sectors in HH/HL structure."
+
+
+def build_rotation_observation(transitions_list: List[str]) -> str:
+    if not transitions_list:
+        return "Rotation signals: n/a"
+    return (
+        "Mixed structural behavior persists across "
+        f"{fmt_list(transitions_list)}, with no confirmed continuation in either direction."
+    )
+
+
+def build_closing_statement(breadth: str, hh_hl_count: int, tilt: str) -> str:
+    sector_word = pluralize(hh_hl_count, "sector")
+    return (
+        f"Market structure reflects {breadth} based on {hh_hl_count} {sector_word} in HH/HL classification. "
+        f"Leadership remains limited rather than broad. "
+        f"Tilt condition: {tilt}."
+    )
 
 
 def fill_template(
@@ -540,7 +573,6 @@ def fill_template(
 ) -> str:
     top3, bot3 = compute_top_bottom(df)
     def_hh, cyc_hh = defensive_cyclical_counts(df)
-    pers = persistent_leaders(df)
     trans = transitions(df)
     counts = compute_counts(df)
 
@@ -559,31 +591,32 @@ def fill_template(
     ranking_table = build_ranking_table(df)
     out = replace_section1_table(out, ranking_table)
 
-    out = replace_line(out, r"^Top 3 Leaders:.*$", f"Top 3 Leaders: {fmt_list(top3)}")
+    out = replace_line(out, r"^Top 3 Leaders:.*$", f"Top 3 by 4W Relative Strength: {fmt_list(top3)}")
+    out = replace_line(out, r"^Top 3 by 4W Relative Strength:.*$", f"Top 3 by 4W Relative Strength: {fmt_list(top3)}")
     out = replace_line(out, r"^Bottom 3 Laggards:.*$", f"Bottom 3 by 4W Rank: {fmt_list(bot3)}")
     out = replace_line(out, r"^Bottom 3 by 4W Rank:.*$", f"Bottom 3 by 4W Rank: {fmt_list(bot3)}")
     out = replace_line(out, r"^Breadth:.*$", f"Breadth: {breadth}")
     out = replace_line(out, r"^Tilt:.*$", f"Tilt: {tilt}")
     out = replace_line(out, r"^Change vs Last Week:.*$", f"Change vs Last Week: {change_vs_last}")
 
-    leadership_conc = f"Leadership concentrated in {len(pers)} sectors."
-    def_line = f"Defensive sectors show {def_hh} HH/HL structure count."
-    cyc_line = f"Cyclical sectors show {cyc_hh} HH/HL structure count."
+    leadership_line = build_leadership_observation(counts["HH_HL"])
+    rotation_line = build_rotation_observation(trans)
+    def_line = f"Defensive sectors show {def_hh} HH/HL {pluralize(def_hh, 'structure')}."
+    cyc_line = f"Cyclical sectors show {cyc_hh} HH/HL {pluralize(cyc_hh, 'structure')}."
     change_line = change_vs_prior_week_line
-    rot_text = f"TRANSITION sectors: {fmt_list(trans)}" if trans else "n/a"
 
-    out = replace_line(out, r"^- Leadership concentration:.*$", f"- {leadership_conc}")
-    out = replace_line(out, r"^- Rotation signals:.*$", f"- Rotation signals: {rot_text}")
+    out = replace_line(out, r"^- Leadership concentration:.*$", f"- {leadership_line}")
+    out = replace_line(out, r"^- Rotation signals:.*$", f"- {rotation_line}")
     out = replace_line(out, r"^- Defensive behavior:.*$", f"- {def_line}")
     out = replace_line(out, r"^- Cyclical confirmation:.*$", f"- {cyc_line}")
     out = replace_line(out, r"^- Change vs prior week:.*$", f"- {change_line}")
 
-    if "## 2. Structural Observations" in out and leadership_conc not in out:
+    if "## 2. Structural Observations" in out and leadership_line not in out:
         out = out.replace(
             "## 2. Structural Observations",
             "## 2. Structural Observations\n\n"
-            f"- {leadership_conc}\n"
-            f"- Rotation signals: {rot_text}\n"
+            f"- {leadership_line}\n"
+            f"- {rotation_line}\n"
             f"- {def_line}\n"
             f"- {cyc_line}\n"
             f"- {change_line}\n",
@@ -593,10 +626,10 @@ def fill_template(
     out = replace_watchlist_section(out, "No valid structural watchlist candidate this week.")
     out = replace_market_risk_state_section(out, risk_state, risk_just)
 
-    closing_text = (
-        f"Market structure reflects {breadth} based on {counts['HH_HL']} sectors in HH/HL classification. "
-        f"Leadership concentration is defined by {len(pers)} Persistent Leaders. "
-        f"Tilt condition: {tilt}."
+    closing_text = build_closing_statement(
+        breadth=breadth,
+        hh_hl_count=counts["HH_HL"],
+        tilt=tilt,
     )
     out = replace_closing_section(out, closing_text)
 
