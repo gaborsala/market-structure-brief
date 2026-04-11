@@ -14,3 +14,4 @@ week,ticker,engine_direction,visual_direction,alignment,notes
 2026_W06,XLRE,TRANSITION,Transition,Aligned,Stabilization without structure recovery
 2026_W06,XLV,TRANSITION,Range/Transition,Aligned,No clear directional structure
 2026_W06,XLP,TRANSITION,Transition,Aligned,Weak recovery without continuation
+2026_W07,classification_misalignment,ANALYZE,Under-classification of LH/LL structures (XLV, XLP identified as TRANSITION instead of confirmed LH/LL),No system change – logged for post-phase review,No,No

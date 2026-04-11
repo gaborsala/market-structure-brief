@@ -15,3 +15,4 @@ week,type,description,action_taken,status
 2026_W06,Template Wording,Top 3 labeled as Leaders despite TRANSITION state,Changed label to "Top 3 by 4W Relative Strength",Resolved
 2026_W06,Grammar Issue,Incorrect pluralization (1 sectors, structure count phrasing),Implemented pluralization helper function,Resolved
 2026_W06,Leadership Logic,Leadership concentration based only on Persistent Leaders caused inconsistency,Shifted to HH/HL-based leadership description,Resolved
+2026_W07,classification_misalignment,ANALYZE,Under-classification of LH/LL structures (XLV, XLP identified as TRANSITION instead of confirmed LH/LL),No system change – logged for post-phase review,No,No
