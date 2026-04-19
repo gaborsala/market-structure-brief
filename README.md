@@ -28,6 +28,7 @@ Each week, the pipeline:
 2. Computes relative performance vs SPY
 3. Applies explicit classification rules
 4. Generates a standardized weekly market structure brief
+5. Tracks structural state duration (TRANSITION → resolution)
 
 The output is consistent, reproducible, and version-controlled.
 
@@ -54,10 +55,15 @@ market-structure-brief/
 ├── briefs/                     # Published weekly reports
 ├── docs/                       # Classification & methodology documentation
 ├── logs/                       # Process tracking
+├── out/
+│   ├── YYYY_WXX/               # Weekly outputs
+│   └── tracking/               # Cross-week tracking files
+│       └── transition_tracking.csv
 ├── src/                        # Core pipeline scripts
 │   ├── sector_ratios_vs_spy.py
 │   ├── weekly_structure_engine.py
-│   └── fill_weekly_template.py
+│   ├── fill_weekly_template.py
+│   └── update_transition_tracking.py
 ├── template/
 │   └── weekly_template.md
 ├── requirements.txt
@@ -71,18 +77,14 @@ python src/sector_ratios_vs_spy.py --days 30
 Outputs:
 
 out/ratios_wide.csv
-
 out/ratios_long.csv
-
 2) Structural Classification
 python src/weekly_structure_engine.py --week 2026_W01
 
 Outputs:
 
 out/2026_W01/weekly_structure_summary.csv
-
 out/2026_W01/weekly_classification.json
-
 3) Report Generation
 python src/fill_weekly_template.py \
   --week 2026_W01 \
@@ -90,43 +92,49 @@ python src/fill_weekly_template.py \
   --summary out/2026_W01/weekly_structure_summary.csv \
   --json out/2026_W01/weekly_classification.json \
   --out briefs/2026_W01.md
+4) Transition Duration Tracking (NEW)
+
+Tracks how long sectors remain in TRANSITION before resolving into HH/HL or LH/LL.
+
+python src/update_transition_tracking.py \
+  --json out/2026_W01/weekly_classification.json \
+  --tracking out/tracking/transition_tracking.csv \
+  --week 2026_W01
+
+Output:
+
+out/tracking/transition_tracking.csv
+Important Rules
+Weeks must be processed in chronological order
+This file is append-only and stateful
+No modification of classification logic
+Pure observation layer (no scoring, no prediction)
 Example Output
 
 See: briefs/2026_W01.md
 
 Skills Demonstrated
-
 Python (CLI-based tooling)
-
 pandas data processing
-
 Financial data ingestion
-
 Deterministic rule systems
-
 Structured reporting automation
-
 Reproducible research workflows
-
 Version-controlled analytical publishing
-
-Scope discipline & process design
-
+Temporal state tracking (structure duration)
 Design Principles
 
 The system intentionally avoids:
 
 Forecasting language
-
 Strategy optimization
-
 Performance claims
-
 Indicator proliferation
-
 Macro overlays
 
 Each weekly brief is a structural snapshot, not a trade signal.
+
+The transition tracking layer adds time-based observation, without altering classification logic.
 
 Installation
 git clone https://github.com/gaborsala/market-structure-brief.git
@@ -141,11 +149,3 @@ python -m venv .venv
 #   source .venv/bin/activate
 
 pip install -r requirements.txt
-Disclaimer
-
-This project is for educational and informational purposes only.
-
-It does not constitute financial advice or investment recommendations.
-No performance claims are made.
-
-See DISCLAIMER.md for details.

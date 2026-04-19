@@ -11,3 +11,7 @@ python src/weekly_structure_engine.py --infile out/2026_W08/ratios_wide.csv --ou
 
 Fill template with filler:
 python src/fill_weekly_template.py --template template/2026_W01_template.md --summary out/2026_W08/weekly_structure_summary.csv --json out/2026_W08/weekly_classification.json --week 2026_W08 --date 2026-04-11 --out briefs/2026_W08.md
+
+Transition traking(W08):
+
+python src/update_transition_tracking.py --json out/2026_W08/weekly_classification.json --tracking out/tracking/transition_tracking.csv --week 2026_W08
