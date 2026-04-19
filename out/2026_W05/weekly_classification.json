@@ -1,0 +1,101 @@
+{
+  "meta": {
+    "sessions_used": 20,
+    "breadth": "Fragmented",
+    "tilt": "Balanced",
+    "count_HH_HL": 3,
+    "count_LH_LL": 6,
+    "count_RANGE": 0,
+    "count_TRANSITION": 2
+  },
+  "table": [
+    {
+      "Rank": 1,
+      "Ticker": "XLE",
+      "Ret_4W": 0.18721345799790634,
+      "Ret_5D": 0.08436555476177388,
+      "Direction": "HH/HL",
+      "Leadership": "Persistent Leader"
+    },
+    {
+      "Rank": 2,
+      "Ticker": "XLU",
+      "Ret_4W": 0.041788622598313285,
+      "Ret_5D": 0.052263380508437374,
+      "Direction": "TRANSITION",
+      "Leadership": "Fading"
+    },
+    {
+      "Rank": 3,
+      "Ticker": "XLF",
+      "Ret_4W": 0.008817233074658759,
+      "Ret_5D": 0.00293968980286774,
+      "Direction": "HH/HL",
+      "Leadership": "Persistent Leader"
+    },
+    {
+      "Rank": 4,
+      "Ticker": "XLK",
+      "Ret_4W": 0.007840706745762205,
+      "Ret_5D": -0.019481917851485786,
+      "Direction": "HH/HL",
+      "Leadership": "Emerging Leader"
+    },
+    {
+      "Rank": 5,
+      "Ticker": "XLP",
+      "Ret_4W": -0.0020968253599807918,
+      "Ret_5D": 0.04121355970516771,
+      "Direction": "LH/LL",
+      "Leadership": "Weak"
+    },
+    {
+      "Rank": 6,
+      "Ticker": "XLB",
+      "Ret_4W": -0.00576172000876507,
+      "Ret_5D": 0.06314004934323858,
+      "Direction": "LH/LL",
+      "Leadership": "Weak"
+    },
+    {
+      "Rank": 7,
+      "Ticker": "XLY",
+      "Ret_4W": -0.008884501480750262,
+      "Ret_5D": -0.008099985121261755,
+      "Direction": "LH/LL",
+      "Leadership": "Weak"
+    },
+    {
+      "Rank": 8,
+      "Ticker": "XLRE",
+      "Ret_4W": -0.013908857910858274,
+      "Ret_5D": 0.018054502331434907,
+      "Direction": "LH/LL",
+      "Leadership": "Weak"
+    },
+    {
+      "Rank": 9,
+      "Ticker": "XLC",
+      "Ret_4W": -0.01699208627647375,
+      "Ret_5D": -0.018421067933502733,
+      "Direction": "LH/LL",
+      "Leadership": "Weak"
+    },
+    {
+      "Rank": 10,
+      "Ticker": "XLV",
+      "Ret_4W": -0.0217998398025675,
+      "Ret_5D": 0.022793634984947575,
+      "Direction": "LH/LL",
+      "Leadership": "Weak"
+    },
+    {
+      "Rank": 11,
+      "Ticker": "XLI",
+      "Ret_4W": -0.03673607194515105,
+      "Ret_5D": 0.009168485491605205,
+      "Direction": "TRANSITION",
+      "Leadership": "Neutral"
+    }
+  ]
+}

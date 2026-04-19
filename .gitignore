@@ -34,7 +34,7 @@ Thumbs.db
 .env.*
 
 # --- Project-specific generated outputs ---
-out/
+
 *.log
 
 # If you ever add raw data folders:
