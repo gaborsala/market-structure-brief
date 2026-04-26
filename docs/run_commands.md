@@ -2,16 +2,16 @@ Run commands (your normal workflow)
 
 Generate ratios (unchanged):
 
-python src/sector_ratios_vs_spy.py --days 30 --outdir out\2026_W08
+python src/sector_ratios_vs_spy.py --days 30 --outdir out\2026_W09
 
 
 Run patched structure engine:
 
-python src/weekly_structure_engine.py --infile out/2026_W08/ratios_wide.csv --outdir out/2026_W08
+python src/weekly_structure_engine.py --infile out/2026_W09/ratios_wide.csv --outdir out/2026_W09
 
-Fill template with filler:
-python src/fill_weekly_template.py --template template/2026_W01_template.md --summary out/2026_W08/weekly_structure_summary.csv --json out/2026_W08/weekly_classification.json --week 2026_W08 --date 2026-04-11 --out briefs/2026_W08.md
+Fill template with filler(watch out "date"):
+python src/fill_weekly_template.py --template template/2026_W01_template.md --summary out/2026_W09/weekly_structure_summary.csv --json out/2026_W09/weekly_classification.json --week 2026_W09 --date 2026-04-26 --out briefs/2026_W09.md
 
-Transition traking(W08):
+Transition traking:
 
-python src/update_transition_tracking.py --json out/2026_W08/weekly_classification.json --tracking out/tracking/transition_tracking.csv --week 2026_W08
+python src/update_transition_tracking.py --json out/2026_W09/weekly_classification.json --tracking out/tracking/transition_tracking.csv --week 2026_W09
