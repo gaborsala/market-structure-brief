@@ -2,3 +2,4 @@ week,date,hh_hl_count,lh_ll_count,range_count,transition_count,new_transitions,r
 2026_W12,2026-05-17,1,10,0,0,0,0,0,Narrow Leadership,Balanced,,No active transition structures detected. Absence logged as valid weekly observation.
 2026_W13,2026-05-25,1,5,0,5,5,0,0,Narrow Leadership,Balanced,XLC|XLF|XLK|XLP|XLV,Active transition structures detected: XLC|XLF|XLK|XLP|XLV
 2026_W14,2026-05-31,1,3,0,7,5,3,2,Narrow Leadership,Balanced,XLB|XLE|XLI|XLP|XLU|XLV|XLY,Active transition structures detected: XLB|XLE|XLI|XLP|XLU|XLV|XLY
+2026_W15,2026-06-07,1,5,0,5,2,4,3,Narrow Leadership,Balanced,XLB|XLF|XLI|XLRE|XLV,Active transition structures detected: XLB|XLF|XLI|XLRE|XLV
